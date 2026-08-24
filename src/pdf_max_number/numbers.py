@@ -33,14 +33,8 @@ SUFFIX_EXP: dict[str, int] = {
     "t": 12,
 }
 
-# Word suffixes may sit on the same line ("5 billion"). Single-letter and
-# glued tokens ("3.15M", "5bn") must touch the number so a following "B."
-# heading or table cell is not read as billions.
-_WORD_SUFFIX = (
-    "thousands|thousand|millions|million|billions|billion|"
-    "trillions|trillion|bn|mm|tn"
-)
-_GLUED_SUFFIX = "bn|mm|tn|k|m|b|t"
+_SUFFIX_ALT = "|".join(re.escape(k) for k in SUFFIX_EXP)
+_SUFFIX_RE = rf"(?P<suffix>{_SUFFIX_ALT})\b"
 
 NUMBER_RE = re.compile(
     rf"""
@@ -54,10 +48,7 @@ NUMBER_RE = re.compile(
         | \d+                                 # 315
     )
     (?:[eE](?P<exp>[+-]?\d+))?
-    (?:
-          [ \t]+(?P<suffix>{_WORD_SUFFIX})\b
-        | (?P<glued_suffix>{_GLUED_SUFFIX})\b
-    )?
+    (?:\s*{_SUFFIX_RE})?
     (?P<close>\))?
     (?P<pct>%)?
     """,
@@ -114,7 +105,7 @@ def find_numbers(text: str, page: int = 1, context_radius: int = 200) -> list[Nu
         if scientific:
             magnitude = magnitude * (Decimal(10) ** int(match.group("exp")))
 
-        suffix_raw = match.group("suffix") or match.group("glued_suffix")
+        suffix_raw = match.group("suffix")
         suffix_exp = SUFFIX_EXP.get(suffix_raw.lower(), 0) if suffix_raw else 0
 
         opened = match.group("open") is not None

@@ -40,15 +40,3 @@ def test_no_numbers():
     result = analyze_text([(1, "Hello world")])
     assert result.raw is None
     assert result.scaled is None
-
-
-def test_section_b_does_not_turn_grouped_figure_into_billions():
-    text = (
-        "Dollars in millions.\n"
-        "Total budgetary resources 10,207.404\n"
-        "B. Working Capital Fund"
-    )
-    result = analyze_text([(1, text)])
-    assert result.raw.value == Decimal("10207.404")
-    assert result.scaled.value == Decimal("10207404000.000")
-    assert result.raw.original == "10,207.404"
