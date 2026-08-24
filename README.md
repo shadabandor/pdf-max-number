@@ -1,13 +1,11 @@
 # pdf-max-number
 
-Find the largest number in a PDF, both as written (**raw**) and after applying scale language (**adjusted**). Raw uses the numeral only (`9.6 billion` is `9.6`). Adjusted applies suffixes and phrases like “in millions” (`9.6 billion` is `9,600,000,000`; `3.15` in millions is `3,150,000`).
-
-Self-contained: local PDF parsing only, no network or external APIs.
+Find the largest number in a PDF, both as written (**raw**) and after applying natural scale language (**adjusted**). Raw uses the numeral only (`9.6 billion` is `9.6`). Adjusted applies suffixes and phrases like “in millions” (`9.6 billion` is `9,600,000,000`; `3.15` in millions is `3,150,000`).
 
 ## Run
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
@@ -15,7 +13,11 @@ pdf-max-number path/to/file.pdf
 pdf-max-number path/to/file.pdf --json
 ```
 
-Human output is two lines: `Raw:` and `Adjusted:`, each with the value, PDF page index, and printed document page number when one is found in the bottom-left footer. `--json` also includes the original span, nearby snippet, and which scale was used.
+Human output is two lines: 
+`Raw: VALUE, PDF page index, printed document page number (if exists)`
+`Adjusted: VALUE, PDF page index, printed document page number (if exists)`
+
+`--json` also includes the original span, nearby snippet, and which scale was used.
 
 ## Methodology
 
@@ -26,7 +28,7 @@ Human output is two lines: `Raw:` and `Adjusted:`, each with the value, PDF page
 
 ## Assumptions and limitations
 
-- Text PDFs only. Scanned/image pages are skipped (no OCR).
+- Text PDFs only. Scanned/image pages are skipped.
 - Number formats are US-centric; European `1.234,56` is supported when that pattern is unambiguous.
 - Scale wording must match known phrases. Unusual phrasing will not be scaled.
 - Years (e.g. `2024`) count as raw numbers but are not multiplied by “in millions”-style guidance.
