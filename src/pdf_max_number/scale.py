@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
 
 from pdf_max_number.numbers import NumberToken
 
@@ -68,27 +67,20 @@ _SCALE_PATTERNS: list[tuple[re.Pattern[str], int]] = [
 ]
 
 
-def detect_document_scale(text: str) -> int:
-    """Return the document-wide scale exponent, or 0 if none.
+def detect_local_scale(token: NumberToken, page_text: str | None = None) -> int | None:
+    """Nearest scale phrase on the page, or in the token snippet if no page text.
 
-    Most frequent phrase family wins; ties go to the family whose last hit is latest.
+    Table captions such as ``( Dollars in Thousands)`` often sit at the top of
+    the page, far outside the token snippet.
     """
-    counts: dict[int, int] = defaultdict(int)
-    last_pos: dict[int, int] = {}
-    for pattern, exp in _SCALE_PATTERNS:
-        for match in pattern.finditer(text):
-            counts[exp] += 1
-            last_pos[exp] = match.start()
-    if not counts:
-        return 0
-    return max(counts, key=lambda exp: (counts[exp], last_pos[exp]))
-
-
-def detect_local_scale(token: NumberToken) -> int | None:
-    """Scale exponent from the nearest phrase in the token's context window."""
-    window = token.context
-    token_from = token.start - token.context_start
-    token_to = token.end - token.context_start
+    if page_text is not None:
+        window = page_text
+        token_from = token.start
+        token_to = token.end
+    else:
+        window = token.context
+        token_from = token.start - token.context_start
+        token_to = token.end - token.context_start
     best: tuple[int, int] | None = None  # (distance, exp)
     for pattern, exp in _SCALE_PATTERNS:
         for match in pattern.finditer(window):
@@ -104,7 +96,7 @@ def detect_local_scale(token: NumberToken) -> int | None:
 
 
 def looks_like_year(token: NumberToken) -> bool:
-    """Four-digit calendar years should not take document/local scale."""
+    """Four-digit calendar years should not take local scale."""
     if token.suffix_exp or token.scientific:
         return False
     if any(mark in token.original for mark in "$£€,."):
@@ -120,7 +112,26 @@ def looks_like_page_label(token: NumberToken) -> bool:
     return bool(re.search(r"\bpage\s+$", prefix, re.IGNORECASE))
 
 
-def scaled_exponent(token: NumberToken, document_exp: int) -> tuple[int, str]:
+def looks_like_absolute_figure(token: NumberToken) -> bool:
+    """Skip local scale for counts and already-expanded dollar amounts.
+
+    Millions/thousands tables usually show compact figures (3.15, 10,207.404).
+    Values like $6,000,000 or 1,754,801 are already in ones.
+    """
+    if token.suffix_exp or token.scientific:
+        return False
+    magnitude = abs(token.magnitude)
+    integer = magnitude.to_integral_value()
+    int_digits = len(str(int(integer)))
+    if magnitude != integer:
+        return int_digits >= 7
+    return int_digits >= 6
+
+
+def scaled_exponent(
+    token: NumberToken,
+    page_text: str | None = None,
+) -> tuple[int, str]:
     """Multiplier exponent actually applied for the adjusted value, plus a label."""
     if token.suffix_exp:
         return token.suffix_exp, f"suffix:{SCALE_NAME.get(token.suffix_exp, token.suffix_exp)}"
@@ -130,9 +141,9 @@ def scaled_exponent(token: NumberToken, document_exp: int) -> tuple[int, str]:
         return 0, "year"
     if looks_like_page_label(token):
         return 0, "page"
-    local = detect_local_scale(token)
+    if looks_like_absolute_figure(token):
+        return 0, "absolute"
+    local = detect_local_scale(token, page_text=page_text)
     if local is not None:
         return local, f"local:{SCALE_NAME[local]}"
-    if document_exp:
-        return document_exp, f"document:{SCALE_NAME[document_exp]}"
     return 0, "none"

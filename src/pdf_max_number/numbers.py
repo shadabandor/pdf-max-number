@@ -29,15 +29,20 @@ SUFFIX_EXP: dict[str, int] = {
     "tn": 12,
     "k": 3,
     "m": 6,
-    "b": 9,
-    "t": 12,
 }
 
-_SUFFIX_ALT = "|".join(re.escape(k) for k in SUFFIX_EXP)
-_SUFFIX_RE = rf"(?P<suffix>{_SUFFIX_ALT})\b"
+# Word suffixes may sit on the same line ("5 billion"). Compact tokens
+# ("3.15M", "5bn") must touch the number so a following heading is not a suffix.
+_WORD_SUFFIX = (
+    "thousands|thousand|millions|million|billions|billion|"
+    "trillions|trillion|bn|mm|tn"
+)
+# Do not treat a lone "B"/"T" as billions/trillions: "Volume 11B" is a label.
+_GLUED_SUFFIX = "bn|mm|tn|k|m"
 
 NUMBER_RE = re.compile(
     rf"""
+    (?<![A-Za-z])
     (?P<neg>-)?
     (?P<open>\()?
     (?P<currency>[$£€])?
@@ -47,8 +52,11 @@ NUMBER_RE = re.compile(
         | \d+\.\d+                            # 3.15
         | \d+                                 # 315
     )
-    (?:[eE](?P<exp>[+-]?\d+))?
-    (?:\s*{_SUFFIX_RE})?
+    (?:[eE](?P<exp>[+-]?\d+)(?![A-Za-z]))?
+    (?:
+          [ \t]+(?P<suffix>{_WORD_SUFFIX})\b
+        | (?P<glued_suffix>{_GLUED_SUFFIX})\b
+    )?
     (?P<close>\))?
     (?P<pct>%)?
     """,
@@ -71,10 +79,8 @@ class NumberToken:
 
     @property
     def raw_value(self) -> Decimal:
-        value = self.magnitude * (Decimal(10) ** self.suffix_exp)
-        if self.negative:
-            value = -value
-        return value
+        """Written numeral only. Suffixes like 'billion' are not applied."""
+        return -self.magnitude if self.negative else self.magnitude
 
 
 def _mask_dates(text: str) -> str:
@@ -105,7 +111,7 @@ def find_numbers(text: str, page: int = 1, context_radius: int = 200) -> list[Nu
         if scientific:
             magnitude = magnitude * (Decimal(10) ** int(match.group("exp")))
 
-        suffix_raw = match.group("suffix")
+        suffix_raw = match.group("suffix") or match.group("glued_suffix")
         suffix_exp = SUFFIX_EXP.get(suffix_raw.lower(), 0) if suffix_raw else 0
 
         opened = match.group("open") is not None

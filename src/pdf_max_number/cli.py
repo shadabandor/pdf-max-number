@@ -8,15 +8,28 @@ from pathlib import Path
 from pdf_max_number.find import FindResult, find_largest
 
 
+def _page_clause(hit: dict[str, str | int | None]) -> str:
+    pdf_page = hit["page"]
+    document_page = hit.get("document_page")
+    if document_page is None:
+        return f"(pdf page {pdf_page})"
+    return f"(pdf page {pdf_page}, document page {document_page})"
+
+
 def _print_human(result: FindResult) -> None:
     if result.empty_pages:
         pages = ", ".join(str(p) for p in result.empty_pages)
         print(f"warning: no extractable text on page(s) {pages}", file=sys.stderr)
-    if result.raw is None:
+    if result.raw is None and result.scaled is None:
         print("No numbers found.")
         return
-    print(f"Raw: {result.raw.as_dict()['value']}")
-    print(f"Adjusted: {result.scaled.as_dict()['value']}")
+    if result.raw is None:
+        print("Raw: none")
+    else:
+        raw = result.raw.as_dict()
+        print(f"Raw: {raw['value']} {_page_clause(raw)}")
+    scaled = result.scaled.as_dict()
+    print(f"Adjusted: {scaled['value']} {_page_clause(scaled)}")
 
 
 def _print_json(result: FindResult) -> None:
